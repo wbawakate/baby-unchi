@@ -3,12 +3,11 @@
 
 import os
 import re
-import cv2
+from PIL import Image
 
 import numpy as np
 
 t_dir = "trem/t/"
-f_dir = "trem/f/"
 
 
 files = os.listdir(t_dir)
