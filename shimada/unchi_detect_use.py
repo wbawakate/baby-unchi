@@ -3,16 +3,16 @@
 
 from __future__ import print_function
 import argparse
+import glob
+import shutil
 import numpy as np
 import chainer
-from chainer import cuda
 import chainer.functions as F
-import pickle
-
-import random
+from chainer import cuda, serializers
 from PIL import Image
 
 parser = argparse.ArgumentParser(description='Chainer example: MNIST')
+parser.add_argument('src_dir', type=str, help='src images directory which must have positive and negative directory')
 parser.add_argument('--gpu', '-gpu', default=-1, type=int,
                     help='GPU ID (negative value indicates CPU)')
 args = parser.parse_args()
@@ -28,14 +28,13 @@ n_input = 128 * 128 * 3
 
 # データセットをロード                                                                                     
 print('load BABY dataset')
-t_data = np.load("./positive_data.npy").astype(np.float32)
-f_data = np.load("./negative_data.npy").astype(np.float32)
-
-all_data = [t_data, f_data]
-N_all_data = t_data.shape[0] + f_data.shape[0]
 
 # 多層パーセプトロンのモデル（パラメータ集合）
-model = pickle.load(open("../trained-model/model", "rb"), encoding='latin1')
+model = chainer.FunctionSet(l1=F.Linear(n_input, n_units), # 入力層-隠れ層1
+                            l2=F.Linear(n_units, n_units), # 隠れ層1-隠れ層2
+                            l3=F.Linear(n_units, 2))       # 隠れ層2-出力層
+
+serializers.load_npz('../model_by_chainer_serializers.npz', model)
 
 # GPU使用のときはGPUにモデルを転送
 if args.gpu >= 0:
@@ -53,13 +52,17 @@ def forward(x_data, y_data, train=False):
     y = model.l3(h2)
     return y
 
-idx = 0
 dst = './detected'
-for cat, data in enumerate(all_data):
-    c = 'positive' if cat==0 else 'negative'
-    for i in data:
-        idx += 1
-        label = np.argmax(forward(np.array([i], dtype=np.float32), None, train=False).data) 
+categories = ['positive', 'negative']
+for c in categories:
+    files = glob.glob(args.src_dir+'/'+ c + '/*.bmp')
+    for f in files:
+        data = np.asarray(Image.open(f)).astype(np.float32)
+
+        # preprocess
+        data /= 255.
+        data = np.expand_dims(data[:,:,::-1].flatten(), 0)
+
+        label = np.argmax(forward(xp.asarray(data, dtype=np.float32), None, train=False).data) 
         d = 'unchi' if label==1 else 'other'
-        im = Image.fromarray(np.uint8(i.reshape((128, 128, 3)) * 255))
-        im.save(dst+'/'+d+'/'+c+'/'+str(idx)+'.bmp')
+        shutil.copy(f,  dst+'/'+d+'/'+c+'/')
